@@ -22,8 +22,10 @@ const TERMS = [['year', 'Full year'], ['S1', 'Semester 1 only'], ['S2', 'Semeste
 const h = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pct = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) + '%' : '—');
 const n2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
-const badge = (L) => `<span class="L ${L ? 'L-' + h(L[0]) : 'L-none'}">${h(L || '–')}</span>`;
+const lk = (L) => (L && 'ABCDE'.includes(L[0]) ? L[0] : 'none');
+const badge = (L, size = '') => `<span class="L ${size} L-${L === 'I' ? 'I' : lk(L)}">${h(L || '–')}</span>`;
 const findCourse = (id) => data.courses.find((c) => c.id === id);
+const levelName = (c) => (LEVELS.find((x) => x[0] === c.level) || LEVELS[0])[1];
 function persist() {
   save(data);
 }
@@ -43,11 +45,6 @@ function theme() {
   const t = data.theme === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : data.theme;
   document.documentElement.dataset.theme = t;
 }
-document.getElementById('theme').onclick = () => {
-  const cur = document.documentElement.dataset.theme;
-  data.theme = cur === 'dark' ? 'light' : 'dark';
-  persist(); theme();
-};
 
 const semesterOf = (mp) => (mp === 'MP1' || mp === 'MP2' ? 'S1' : 'S2');
 const inTerm = (c, sem) => c.term === 'year' || c.term === sem;
@@ -59,11 +56,28 @@ function currentMP() {
     const s = new Date(p.start), e = new Date(p.end);
     if (s <= now && now <= new Date(e.getTime() + 864e5)) return p.key;
   }
-  // otherwise: last marking period that has any assignments
   let last = 'MP1';
   for (const m of MPS) if (data.courses.some((c) => c.mps[m] && c.mps[m].assignments.length)) last = m;
   return last;
 }
+const semGPA = (sem) => E.gpa(data.courses.filter((c) => inTerm(c, sem)).map((c) => ({ letter: E.semesterGrade(c, sem).letter, credits: c.credits, course: c })));
+
+// ---------- icons (stroke, 24px grid) ----------
+const ICON = {
+  grades: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  semester: '<path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l4-5 3 3 5-6"/>',
+  gpa: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M7 10.5V16c0 1.5 2.2 3 5 3s5-1.5 5-3v-5.5"/>',
+  schedule: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h1"/><path d="M3 12h1"/><path d="M3 18h1"/>',
+  attendance: '<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18"/><path d="M8 2.5v4"/><path d="M16 2.5v4"/>',
+  documents: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  x: '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+};
+const ico = (k, s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 // ---------- routing ----------
 function route() {
@@ -71,10 +85,9 @@ function route() {
   return { page: parts[0] || '', arg: decodeURIComponent(parts[1] || ''), arg2: decodeURIComponent(parts[2] || '') };
 }
 function nav(page) {
-  const items = [['grades', 'Grades'], ['semester', 'Semester'], ['gpa', 'GPA'], ['schedule', 'Schedule'], ['attendance', 'Attendance'], ['documents', 'Documents'], ['settings', 'Settings']];
-  document.getElementById('nav').innerHTML = data.courses.length
-    ? items.map(([k, v]) => `<a href="#/${k}" class="${page === k || (page === 'course' && k === 'grades') ? 'on' : ''}">${v}</a>`).join('')
-    : '';
+  const items = [['grades', 'Grades'], ['semester', 'Semester'], ['gpa', 'GPA'], ['schedule', 'Schedule'], ['attendance', 'Attendance'], ['documents', 'Documents'], ['sep'], ['settings', 'Settings']];
+  document.getElementById('nav').innerHTML = items.map(([k, v]) => k === 'sep' ? '<div class="sep"></div>'
+    : `<a href="#/${k}" class="${page === k || (page === 'course' && k === 'grades') || (page === 'rules' && k === 'settings') ? 'on' : ''} n-${k}"${page === k ? ' aria-current="page"' : ''}>${ico(k)}<span>${v}</span></a>`).join('');
 }
 function render() {
   theme();
@@ -82,6 +95,7 @@ function render() {
   let page = r.page;
   if (!data.courses.length && !['login', 'settings', 'rules'].includes(page)) page = 'login';
   if (!page) page = 'grades';
+  document.body.classList.toggle('bare', page === 'login');
   nav(page);
   const view = { login: viewLogin, grades: viewGrades, course: viewCourse, semester: viewSemester, gpa: viewGPA, schedule: viewSchedule, attendance: viewAttendance, documents: viewDocuments, settings: viewSettings, rules: viewRules }[page] || viewGrades;
   $app.innerHTML = view(r);
@@ -89,19 +103,19 @@ function render() {
 }
 addEventListener('hashchange', () => { render(); scrollTo(0, 0); });
 
-// ---------- login ----------
+// ---------- sign in ----------
 function viewLogin() {
   return `<div class="login">
-  <h1>MelonFork</h1>
-  <p class="muted">Grades, what-ifs, semester grades and GPA for MCPS students. Your StudentVUE details go only to MCPS through your relay. Nothing is stored anywhere but this browser.</p>
-  <form class="panel" id="loginForm">
-    <label class="field"><span>StudentVUE username (student ID)</span><input name="u" autocomplete="username" value="${h(settings.username)}" required></label>
-    <label class="field"><span>Password</span><input name="p" type="password" autocomplete="current-password" value="${h(settings.remember ? settings.password : '')}" required></label>
-    <label class="row small"><input type="checkbox" name="rem" ${settings.remember ? 'checked' : ''}> Remember me on this device</label>
-    ${settings.relay ? '' : `<div class="note warn small">No relay address yet. Set it in <a href="#/settings">Settings</a> first.</div>`}
-    <div class="row" style="margin-top:10px"><button class="primary" ${busy ? 'disabled' : ''}>${busy ? h(busy) : 'Sign in'}</button></div>
+  <div class="brand"><img src="icon.svg" alt="" width="36" height="36"> MelonFork</div>
+  <form id="loginForm">
+    <h1>Sign in with StudentVUE</h1>
+    <label class="f">Student ID<input name="u" autocomplete="username" inputmode="numeric" value="${h(settings.username)}" required></label>
+    <label class="f">Password<input name="p" type="password" autocomplete="current-password" value="${h(settings.remember ? settings.password : '')}" required></label>
+    <label class="check"><input type="checkbox" name="rem" ${settings.remember ? 'checked' : ''}> Remember me</label>
+    <button class="primary" ${busy ? 'disabled' : ''}>${busy ? h(busy) : 'Sign in'}</button>
+    <button type="button" id="demo">Try sample grades</button>
   </form>
-  <div class="row small"><button id="demo">Try with sample grades</button><button id="manual">Enter grades by hand</button><a href="#/settings">Settings</a></div>
+  <div class="row small">${data.courses.length ? '<a href="#/grades">Back to grades</a>' : '<a href="#" id="manual">Enter grades by hand</a>'}</div>
   </div>`;
 }
 
@@ -109,12 +123,13 @@ async function doSync(u, p) {
   client = new StudentVue(settings.relay, u, p);
   busy = 'Signing in…'; render();
   try {
-    data.extra = Object.assign({}, data.extra, await syncAll(client, data.courses, (s) => { busy = s; const b = document.querySelector('#loginForm button, #syncBtn'); if (b) b.textContent = s; }));
+    data.extra = Object.assign({}, data.extra, await syncAll(client, data.courses, (s) => { busy = s; const b = document.querySelector('#loginForm button.primary, #syncBtn .lbl'); if (b) b.textContent = s; }));
     data.extra.lastSync = new Date().toISOString();
+    delete data.extra.demo;
     data.courses = normalize(data).courses;
     persist();
     busy = '';
-    toast('Grades updated from StudentVUE');
+    toast('Grades updated');
     location.hash = '#/grades';
     render();
   } catch (e) {
@@ -126,131 +141,148 @@ async function doSync(u, p) {
 }
 
 // ---------- grades ----------
+function syncedLabel() {
+  if (data.extra && data.extra.demo) return 'Sample grades';
+  if (!(data.extra && data.extra.lastSync)) return 'Entered by hand';
+  const d = new Date(data.extra.lastSync);
+  const today = d.toDateString() === new Date().toDateString();
+  return 'Updated ' + (today ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }));
+}
 function viewGrades(r) {
   const mp = MPS.includes(r.arg) ? r.arg : currentMP();
   const sem = semesterOf(mp);
   const list = coursesIn(mp);
   const g = E.gpa(list.map((c) => ({ letter: E.mpLetter(c, mp), credits: c.credits, course: c })));
-  const sg = E.gpa(data.courses.filter((c) => inTerm(c, sem)).map((c) => ({ letter: E.semesterGrade(c, sem).letter, credits: c.credits, course: c })));
-  const synced = data.extra && data.extra.lastSync ? `Updated ${new Date(data.extra.lastSync).toLocaleString()}` : 'Not synced with StudentVUE';
-  return `<div class="row"><h1>Grades</h1><span class="spacer"></span><span class="muted small">${h(synced)}</span>
-    ${settings.username ? `<button id="syncBtn" ${busy ? 'disabled' : ''}>${busy ? h(busy) : 'Refresh'}</button>` : ''}</div>
-  <div class="tabs">${MPS.map((m) => `<button data-mp="${m}" class="${m === mp ? 'on' : ''}">${m}</button>`).join('')}</div>
-  <div class="stats">
-    <div class="stat"><div class="k">${mp} GPA (unweighted)</div><div class="v">${n2(g.unweighted)}</div></div>
-    <div class="stat"><div class="k">${mp} GPA (weighted)</div><div class="v">${n2(g.weighted)}</div></div>
-    <div class="stat"><div class="k">${sem === 'S1' ? 'Semester 1' : 'Semester 2'} GPA, projected</div><div class="v">${n2(sg.unweighted)} <span class="small muted">/ ${n2(sg.weighted)} w</span></div></div>
+  const sg = semGPA(sem);
+  const cum = E.combineGPA(data.prior, E.gpa(['S1', 'S2'].flatMap((s) => data.courses.filter((c) => inTerm(c, s)).map((c) => ({ letter: E.semesterGrade(c, s).letter, credits: c.credits, course: c })))));
+  const hasPrior = Number(data.prior.credits) > 0;
+  return `<div class="head"><div class="t"><span class="sub">${h(syncedLabel())}</span><h1>Grades</h1></div>
+    <div class="seg" role="group" aria-label="Marking period">${MPS.map((m) => `<button data-mp="${m}" class="${m === mp ? 'on' : ''}" aria-pressed="${m === mp}">${m}</button>`).join('')}</div>
+    ${settings.username ? `<button id="syncBtn" class="primary" ${busy ? 'disabled' : ''}>${ico('refresh', 18)}<span class="lbl">${busy ? h(busy) : 'Refresh'}</span></button>` : ''}</div>
+  <div class="tiles">
+    <div class="tile"><span class="k">${sem === 'S1' ? 'Semester 1' : 'Semester 2'} GPA</span><span class="v">${n2(sg.unweighted)}</span><span class="s">Weighted <b>${n2(sg.weighted)}</b></span></div>
+    <div class="tile"><span class="k">${mp} GPA</span><span class="v">${n2(g.unweighted)}</span><span class="s">Weighted <b>${n2(g.weighted)}</b></span></div>
+    ${hasPrior ? `<div class="tile opt"><span class="k">Cumulative</span><span class="v">${n2(cum.unweighted)}</span><span class="s">Weighted <b>${n2(cum.weighted)}</b></span></div>` : ''}
   </div>
-  <div class="cards">${list.map((c) => card(c, mp)).join('') || '<p class="muted">No courses in this marking period.</p>'}</div>
-  <p class="small muted" style="margin-top:16px">Letters follow MCPS rules. <a href="#/rules">How grades are calculated</a>.</p>`;
+  <div class="cards">${list.map((c) => card(c, mp)).join('') || '<div class="panel empty">No courses this marking period.</div>'}</div>`;
 }
 function card(c, mp) {
   const m = c.mps[mp];
-  const calc = E.markingPeriod(c, m);
+  const p = E.mpPercent(c, mp);
   const L = E.mpLetter(c, mp);
   const sem = E.semesterGrade(c, semesterOf(mp));
-  const rep = m.reported;
-  const diff = false;
   return `<a class="card" href="#/course/${c.id}/${mp}">
-    <div class="row"><div class="title">${h(c.name)}</div><span class="spacer"></span>${badge(L)}</div>
-    <div class="meta">${c.period ? 'Period ' + h(c.period) + ' · ' : ''}${h(c.teacher)}${c.level !== 'regular' ? ' · ' + h(LEVELS.find((x) => x[0] === c.level)[1]) : ''}</div>
-    <div class="row" style="margin-top:6px"><span class="grade">${pct(E.mpPercent(c, mp), 2)}</span>
-      ${E.hasWhatIf(m) ? '<span class="pill">what-if</span>' : ''}${m.override ? '<span class="pill">set by hand</span>' : ''}
-      <span class="spacer"></span><span class="small muted">Semester: ${badge(sem.letter)}</span></div>
-    ${diff ? `<div class="small muted">StudentVUE shows ${h(rep.letter)}${rep.pct != null ? ' (' + pct(rep.pct) + ')' : ''}</div>` : ''}
+    <div class="top">${badge(L, 'big')}
+      <div class="nm"><b>${h(c.name)}</b><span>${c.period ? 'Period ' + h(c.period) + ' · ' : ''}${h(c.teacher)}</span></div>
+      <span class="p">${pct(p)}</span></div>
+    <div class="prog"><i class="bg-${lk(L)}" style="width:${Number.isFinite(p) ? Math.max(0, Math.min(100, p)) : 0}%"></i></div>
+    <div class="foot">Semester ${badge(sem.letter)}${E.hasWhatIf(m) || m.override ? '<span class="tag edit">what-if</span>' : ''}<span class="spacer"></span>${c.level !== 'regular' ? h(levelName(c)) : ''}</div>
   </a>`;
 }
 
 // ---------- course ----------
 function viewCourse(r) {
   const c = findCourse(r.arg);
-  if (!c) return '<p>Course not found. <a href="#/grades">Back</a></p>';
+  if (!c) return '<div class="panel empty">Course not found. <a href="#/grades">Back to grades</a></div>';
   const mp = MPS.includes(r.arg2) ? r.arg2 : currentMP();
   const m = c.mps[mp];
   const calc = E.markingPeriod(c, m);
   const L = E.mpLetter(c, mp);
   const sem = semesterOf(mp);
-  const rows = m.assignments;
-  const catOpts = (sel) => (c.categories.length ? c.categories : [{ name: 'Total Points' }]).map((k) => `<option ${k.name === sel ? 'selected' : ''}>${h(k.name)}</option>`).join('');
-  return `<p class="small"><a href="#/grades/${mp}">← Grades</a></p>
-  <div class="row"><h1 style="margin:0">${h(c.name)}</h1><span class="spacer"></span>${badge(L)}<span class="big grade">${pct(E.mpPercent(c, mp), 2)}</span></div>
-  <p class="muted small">${c.period ? 'Period ' + h(c.period) + ' · ' : ''}${h(c.teacher)}${c.email ? ' · <a href="mailto:' + h(c.email) + '">' + h(c.email) + '</a>' : ''}${c.room ? ' · Room ' + h(c.room) : ''}</p>
-  <div class="tabs">${MPS.filter((x) => inTerm(c, semesterOf(x))).map((x) => `<button data-cmp="${x}" class="${x === mp ? 'on' : ''}">${x}</button>`).join('')}</div>
-  ${m.reported && m.reported.letter ? `<div class="note small">StudentVUE's own mark for ${mp}: <b>${h(m.reported.letter)}</b>${m.reported.pct != null ? ' (' + pct(m.reported.pct, 2) + ')' : ''}.
-     ${E.hasWhatIf(m) ? 'You have what-if changes, so the grade above is MelonFork\'s calculation from the assignments.' : Number.isFinite(calc.pct) && m.reported.pct != null && Math.abs(calc.pct - m.reported.pct) >= 0.05 ? `Calculated from the assignments it's ${pct(calc.pct, 2)}. The teacher may have settings StudentVUE doesn't show (for example dropped scores), so MelonFork uses StudentVUE's number until you change something.` : ''}</div>` : ''}
-  ${E.hasWhatIf(m) || m.override ? `<div class="row" style="margin-bottom:10px"><span class="pill">what-if mode</span><button data-act="reset">Undo all changes for ${mp}</button></div>` : ''}
+  const whatIf = E.hasWhatIf(m) || m.override !== '';
+  const cats = c.categories.length ? c.categories : [{ name: 'Total Points' }];
+  const catOpts = (sel) => cats.map((k) => `<option ${k.name === sel ? 'selected' : ''}>${h(k.name)}</option>`).join('');
+  const rep = m.reported && Number.isFinite(Number(m.reported.pct)) && m.reported.pct !== null ? `StudentVUE ${pct(Number(m.reported.pct))}` : '';
+  const mpTabs = MPS.filter((x) => inTerm(c, semesterOf(x))).map((x) => {
+    const xp = E.mpPercent(c, x);
+    return `<button data-cmp="${x}" class="${x === mp ? 'on' : ''}" aria-pressed="${x === mp}">${x}${x !== mp && Number.isFinite(xp) ? '<span class="hide-sm"> · ' + E.roundHalfUp(xp) + '%</span>' : ''}</button>`;
+  }).join('');
+  return `<a href="#/grades/${mp}" class="row small" style="font-weight:700;text-decoration:none;min-height:32px">${ico('back', 16)} All grades</a>
+  <section class="panel ch">
+    ${badge(L, 'xl')}
+    <div class="nm"><h1>${h(c.name)}</h1><span class="muted">${c.period ? 'Period ' + h(c.period) + ' · ' : ''}${h(c.teacher)}${c.level !== 'regular' ? ' · ' + h(levelName(c)) : ''}</span></div>
+    <div class="pp"><b>${pct(E.mpPercent(c, mp))}</b>${whatIf && rep ? `<span class="small muted">${h(rep)}</span>` : ''}</div>
+    <div class="bar"><div class="seg" role="group" aria-label="Marking period">${mpTabs}</div>
+      ${whatIf ? `<button class="soft" data-act="reset">${ico('undo', 16)} Undo what-ifs</button>` : ''}</div>
+  </section>
 
-  <div class="panel"><h2 style="margin-top:0">Categories</h2>
-  <div class="table-wrap"><table><tr><th>Category</th><th>Weight</th><th>Points</th><th>Grade</th></tr>
-  ${calc.rows.map((k) => `<tr><td>${h(k.name)}</td><td>${calc.weighted ? k.weight + '%' : '—'}</td><td>${n2(k.earned)} / ${n2(k.possible)}</td><td>${pct(k.pct, 2)} ${badge(E.letterFor(k.pct))}</td></tr>`).join('')}
-  </table></div>
-  <details class="small" style="margin-top:8px"><summary>Edit categories</summary>
-    <div id="catEdit">${(c.categories.length ? c.categories : []).map((k, i) => `<div class="row" style="margin:4px 0"><input data-cat-name="${i}" value="${h(k.name)}"><input type="number" step="any" data-cat-w="${i}" value="${k.weight}">%<button data-act="delcat" data-i="${i}" class="ghost danger">✕</button></div>`).join('')}</div>
-    <button data-act="addcat">Add category</button> <span class="muted">No categories = total points.</span>
-  </details></div>
-
-  <div class="panel"><div class="row"><h2 style="margin:0">Assignments</h2><span class="spacer"></span><button data-act="add">Add what-if assignment</button></div>
-  <div class="table-wrap"><table>
-  <tr><th>Assignment</th><th class="hide-sm">Category</th><th>Score</th><th>Out of</th><th>%</th><th></th></tr>
-  ${rows.map((a) => {
-    const p = E.counts(a) ? (E.earnedOf(a) / Number(a.possible)) * 100 : NaN;
-    return `<tr class="${a.edited || a.custom ? 'changed' : ''} ${a.removed ? 'off' : ''}" data-id="${a.id}">
-      <td>${a.custom ? `<input data-f="name" value="${h(a.name)}">` : h(a.name)}<div class="small muted">${h(a.date || '')}${a.missing ? ' · missing' : ''}${a.excused ? ' · excused' : ''}${a.notes ? ' · ' + h(a.notes) : ''}</div></td>
-      <td class="hide-sm"><select data-f="category">${catOpts(a.category)}</select></td>
-      <td><input type="number" step="any" data-f="earned" value="${a.earned === '' || a.earned == null ? '' : h(a.earned)}" placeholder="${a.missing ? '0' : '—'}"></td>
-      <td><input type="number" step="any" data-f="possible" value="${h(a.possible)}"></td>
-      <td>${pct(p)}</td>
-      <td><button class="ghost" data-act="${a.removed ? 'restore' : 'del'}" title="${a.removed ? 'Bring back' : 'Leave out'}">${a.removed ? '↺' : '✕'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="6" class="muted">No assignments yet.</td></tr>'}
-  </table></div>
-  <details style="margin-top:10px"><summary>Paste scores</summary>
-    <p class="small muted">Copy the assignment list from a StudentVUE course page (or type one per line, like <code>Unit 2 Test 42/50</code>) and paste it here.</p>
-    <textarea id="pasteBox" placeholder="Quiz 3  All Tasks / Assessments  18 / 20"></textarea>
-    <div class="row"><button data-act="paste">Add these</button><label class="small row"><input type="checkbox" id="pasteReplace"> Replace this marking period's list</label></div>
-  </details></div>
-
-  <div class="panel"><h2 style="margin-top:0">Grade optimizer</h2>
-    <p class="small muted">What do I need on the next assignment?</p>
-    <div class="row">Target <select id="optL">${POLICY.letters.slice(0, -1).map((x) => `<option>${x}</option>`).join('')}</select>
-      for <select id="optFor"><option value="mp">${mp}</option>${POLICY.semesters[sem][1] === mp && inTerm(c, sem) ? `<option value="sem">the semester</option>` : ''}</select>
-      in <select id="optCat">${catOpts('')}</select> worth <input type="number" id="optPts" value="100" step="any"> points
-      <button data-act="opt" class="primary">Calculate</button></div>
-    <div id="optOut" class="note" style="display:none"></div>
-  </div>
-
-  ${semesterPanel(c, sem)}
-
-  <div class="panel"><h2 style="margin-top:0">Course settings</h2>
-    <div class="row">
-      <label class="field"><span>Level</span><select data-cset="level">${LEVELS.map(([k, v]) => `<option value="${k}" ${c.level === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label class="field"><span>Runs</span><select data-cset="term">${TERMS.map(([k, v]) => `<option value="${k}" ${c.term === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label class="field"><span>Credit per semester</span><input type="number" step="0.25" data-cset="credits" value="${h(c.credits)}"></label>
-      <label class="field"><span>Name</span><input data-cset="name" value="${h(c.name)}"></label>
+  <div class="cols">
+    <div class="main">
+      <section class="panel flush" aria-label="Assignments">
+        <div class="bar-h"><h2>Assignments</h2><button class="primary" data-act="add">${ico('plus', 16)} Add what-if</button></div>
+        <div class="scroll"><table>
+          <thead><tr><th>Assignment</th><th class="hide-sm">Category</th><th>Score</th><th>Grade</th><th><span class="muted" style="position:absolute;left:-9999px">Leave out</span></th></tr></thead>
+          <tbody>${m.assignments.map((a) => row(a, catOpts)).join('') || '<tr><td colspan="5" class="empty">No assignments yet.</td></tr>'}</tbody>
+        </table></div>
+        <details style="padding:12px 20px 16px;border-top:1px solid var(--line2)"><summary>Paste scores</summary>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+            <textarea id="pasteBox" placeholder="Unit 2 Test   42/50"></textarea>
+            <div class="row"><button data-act="paste">Add</button><label class="row small"><input type="checkbox" id="pasteReplace"> Replace this list</label></div>
+          </div>
+        </details>
+      </section>
     </div>
-    <label class="row small" style="margin-bottom:10px"><input type="checkbox" data-cset="eoc" ${c.eoc ? 'checked' : ''}> Has a Maryland end-of-course exam (Biology, NSL Government): it counts 20% of the Semester B grade</label>
-    <button class="danger" data-act="delcourse">Delete course</button>
+
+    <div class="aside">
+      <section class="panel" aria-label="Categories"><h2>Categories</h2>
+        ${calc.rows.map((k) => `<div class="cat"><div class="l"><b>${h(k.name)}</b>${calc.weighted ? `<span class="muted">${k.weight}%</span>` : ''}<b class="num">${pct(k.pct)}</b></div>
+          <div class="prog b8"><i class="bg-${lk(E.letterFor(k.pct))}" style="width:${Number.isFinite(k.pct) ? Math.min(100, k.pct) : 0}%"></i></div>
+          <span class="small muted num">${+k.earned.toFixed(2)} / ${+k.possible.toFixed(2)} points</span></div>`).join('')}
+      </section>
+
+      <section class="panel" aria-label="Score needed"><h2>Score needed</h2>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+          <label class="f">Goal<select id="optGoal">${POLICY.letters.slice(0, -1).map((x) => `<option value="mp:${x}">${x} for ${mp}</option>`).join('')}${POLICY.semesters[sem][1] === mp && inTerm(c, sem) ? POLICY.letters.slice(0, -1).map((x) => `<option value="sem:${x}" ${x === 'A' ? 'selected' : ''}>Semester ${x}</option>`).join('') : ''}</select></label>
+          <label class="f">Category<select id="optCat">${catOpts('')}</select></label>
+          <label class="f">Worth (points)<input type="number" id="optPts" value="100" step="any" style="width:100%;text-align:left"></label>
+        </div>
+        <p class="result" id="optOut"></p>
+      </section>
+
+      ${semesterPanel(c, sem)}
+
+      <section class="panel"><details><summary>Course settings</summary>
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
+          <label class="f">Name<input data-cset="name" value="${h(c.name)}"></label>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+            <label class="f">Level<select data-cset="level">${LEVELS.map(([k, v]) => `<option value="${k}" ${c.level === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+            <label class="f">Runs<select data-cset="term">${TERMS.map(([k, v]) => `<option value="${k}" ${c.term === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+            <label class="f">Credit per semester<input type="number" step="0.25" data-cset="credits" value="${h(c.credits)}" style="width:100%;text-align:left"></label>
+          </div>
+          <label class="row small"><input type="checkbox" data-cset="eoc" ${c.eoc ? 'checked' : ''}> State end-of-course exam (20% of Semester B)</label>
+          <div class="f">Categories${(c.categories || []).map((k, i) => `<div class="row" style="flex-wrap:nowrap"><input data-cat-name="${i}" value="${h(k.name)}" style="flex:1;min-width:0"><input type="number" step="any" data-cat-w="${i}" value="${k.weight}"><span>%</span><button class="icon" data-act="delcat" data-i="${i}" aria-label="Remove ${h(k.name)}">${ico('x', 16)}</button></div>`).join('')}
+            <button data-act="addcat" style="align-self:flex-start">${ico('plus', 16)} Category</button></div>
+          <button class="danger" data-act="delcourse" style="align-self:flex-start">Delete course</button>
+        </div></details></section>
+    </div>
   </div>`;
+}
+function row(a, catOpts) {
+  const p = E.counts(a) ? (E.earnedOf(a) / Number(a.possible)) * 100 : NaN;
+  const sub = [a.date, a.missing ? 'Missing' : '', a.excused ? 'Excused' : '', a.edited && a.orig ? `was ${a.orig.earned === '' || a.orig.earned == null ? '—' : a.orig.earned}` : '', a.custom ? 'what-if' : ''].filter(Boolean).join(' · ');
+  return `<tr class="${a.edited || a.custom ? 'changed' : ''} ${a.removed ? 'off' : ''}" data-id="${a.id}">
+    <td>${a.custom ? `<input data-f="name" value="${h(a.name)}" aria-label="Assignment name" style="width:100%;max-width:220px">` : `<b>${h(a.name)}</b>`}<div class="sub">${h(sub)}</div></td>
+    <td class="hide-sm"><select data-f="category" aria-label="Category">${catOpts(a.category)}</select></td>
+    <td style="white-space:nowrap"><input type="number" step="any" data-f="earned" aria-label="Score" value="${a.earned === '' || a.earned == null ? '' : h(a.earned)}" placeholder="${a.missing ? '0' : '—'}"> <span class="muted">/</span> ${a.custom ? `<input type="number" step="any" data-f="possible" aria-label="Out of" value="${h(a.possible)}">` : `<span class="muted num">${h(+Number(a.possible).toFixed(2))}</span>`}</td>
+    <td class="num" style="font-weight:800"><span class="t-${lk(E.letterFor(p))}">${pct(p)}</span></td>
+    <td style="text-align:right"><button class="icon" data-act="${a.removed ? 'restore' : 'del'}" aria-label="${a.removed ? 'Bring back' : 'Leave out'} ${h(a.name)}">${ico(a.removed ? 'undo' : 'x', 16)}</button></td></tr>`;
 }
 
 function semesterPanel(c, sem) {
   if (!inTerm(c, sem)) return '';
   const [a, b] = POLICY.semesters[sem];
   const res = E.semesterGrade(c, sem);
-  const auto = (key) => { const p = E.mpPercent({ ...c, mps: { ...c.mps, [key]: { ...c.mps[key], override: '' } } }, key); return Number.isFinite(p) ? p.toFixed(2) : 'no grade'; };
-  const inp = (key) => `<label class="field"><span>${key} %</span><input type="number" step="any" min="0" max="100" data-ovr="${key}" value="${h(c.mps[key].override)}" placeholder="${h(auto(key))}"></label>`;
-  const exam = E.hasEOC(c, sem)
-    ? `<label class="field"><span>End-of-course exam (50–100)</span><input type="number" step="any" min="50" max="100" data-exam="${sem}" value="${h(c.exams[sem] ?? '')}" placeholder="not in yet"></label>`
-    : '';
+  const auto = (key) => { const p = E.mpPercent({ ...c, mps: { ...c.mps, [key]: { ...c.mps[key], override: '' } } }, key); return Number.isFinite(p) ? String(E.roundHalfUp(p)) : '—'; };
+  const inp = (key) => `<label class="f">${key}<input type="number" step="any" min="0" max="100" data-ovr="${key}" value="${h(c.mps[key].override)}" placeholder="${h(auto(key))}" style="width:72px"></label>`;
+  const exam = E.hasEOC(c, sem) ? `<label class="f">Exam<input type="number" step="any" min="50" max="100" data-exam="${sem}" value="${h(c.exams[sem] ?? '')}" placeholder="—" style="width:72px"></label>` : '';
   const needs = E.secondMPNeeds(c, sem);
-  return `<div class="panel"><h2 style="margin-top:0">${sem === 'S1' ? 'Semester 1' : 'Semester 2'} grade</h2>
-    <div class="row">${inp(a)}${inp(b)}${exam}
-      <div><div class="small muted">Semester grade</div><div class="big">${badge(res.letter)} <span class="grade">${Number.isFinite(res.pct) ? roundHalf(res.pct) + '%' : ''}</span></div></div></div>
-    <p class="small muted">${res.note ? h(res.note) + '. ' : ''}Type a percentage above to try a what-if. Leave it blank to use the real grade.</p>
-    ${needs.length ? `<table class="small" style="max-width:460px"><tr><th>Semester grade</th><th>${b} needs (rounded)</th></tr>
-      ${needs.map((x) => `<tr><td>${badge(x.letter)}</td><td>${x.need === null ? 'out of reach' : x.need === 0 ? 'guaranteed' : x.need + '% <span class="muted">(' + (x.need - 0.5) + '% or higher)</span>'}</td></tr>`).join('')}</table>` : ''}
-  </div>`;
+  return `<section class="panel" aria-label="${sem === 'S1' ? 'Semester 1' : 'Semester 2'}">
+    <div class="row"><h2 class="spacer">${sem === 'S1' ? 'Semester 1' : 'Semester 2'}</h2>${Number.isFinite(res.pct) ? `<span class="num muted">${E.roundHalfUp(res.pct)}%</span>` : ''}${badge(res.letter, 'big')}</div>
+    <div class="row" style="align-items:flex-end">${inp(a)}${inp(b)}${exam}</div>
+    ${needs.length ? `<table class="need"><caption style="text-align:left;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:4px">${b} needed</caption>
+      ${needs.map((x) => `<tr><td><b class="t-${x.letter}">${x.letter}</b></td><td style="text-align:right" class="num">${x.need === null ? '<span class="muted">out of reach</span>' : x.need === 0 ? '<span class="muted">locked in</span>' : '<b>' + x.need + '%</b>'}</td></tr>`).join('')}</table>` : ''}
+  </section>`;
 }
-const roundHalf = (p) => E.roundHalfUp(p);
 
 // ---------- semester ----------
 function viewSemester(r) {
@@ -258,21 +290,23 @@ function viewSemester(r) {
   const [a, b] = POLICY.semesters[sem];
   const list = data.courses.filter((c) => inTerm(c, sem));
   const anyExam = list.some((c) => E.hasEOC(c, sem));
-  const g = E.gpa(list.map((c) => ({ letter: E.semesterGrade(c, sem).letter, credits: c.credits, course: c })));
-  const cell = (c, k) => { const p = E.mpPercent(c, k); return Number.isFinite(p) ? `${badge(E.letterFor(p))} ${E.roundHalfUp(p)}%` : '<span class="muted">—</span>'; };
-  return `<h1>Semester grades</h1>
-  <div class="tabs"><button data-sem="S1" class="${sem === 'S1' ? 'on' : ''}">Semester 1</button><button data-sem="S2" class="${sem === 'S2' ? 'on' : ''}">Semester 2</button></div>
-  <div class="stats"><div class="stat"><div class="k">Semester GPA (unweighted)</div><div class="v">${n2(g.unweighted)}</div></div>
-  <div class="stat"><div class="k">Semester GPA (weighted)</div><div class="v">${n2(g.weighted)}</div></div></div>
-  <div class="panel table-wrap"><table><tr><th>Course</th><th>${a}</th><th>${b}</th>${anyExam ? '<th>EOC exam</th>' : ''}<th>Semester</th><th class="hide-sm">How</th><th class="hide-sm">Points</th></tr>
-  ${list.map((c) => {
-    const res = E.semesterGrade(c, sem);
-    const gp = E.gradePoints(res.letter, c);
-    return `<tr><td><a href="#/course/${c.id}/${b}">${h(c.name)}</a></td><td>${cell(c, a)}</td><td>${cell(c, b)}</td>
-      ${anyExam ? `<td>${E.hasEOC(c, sem) ? h(c.exams[sem] ?? '—') : '<span class="muted small">n/a</span>'}</td>` : ''}
-      <td>${badge(res.letter)}</td><td class="hide-sm small muted">${h(res.note)}</td><td class="hide-sm">${gp == null ? '—' : gp.toFixed(1)}</td></tr>`;
-  }).join('')}</table></div>
-  <p class="small muted">Open a course to try what-ifs. ${h(POLICY.semesterSummary)} <a href="#/rules">Full rules</a>.</p>`;
+  const g = semGPA(sem);
+  const cell = (c, k) => { const p = E.mpPercent(c, k); return Number.isFinite(p) ? `<b class="t-${lk(E.letterFor(p))}">${E.letterFor(p)}</b> <span class="muted">${E.roundHalfUp(p)}%</span>` : '<span class="muted">—</span>'; };
+  return `<div class="head"><div class="t"><h1>Semester grades</h1></div>
+    <div class="seg" role="group" aria-label="Semester"><button data-sem="S1" class="${sem === 'S1' ? 'on' : ''}">Semester 1</button><button data-sem="S2" class="${sem === 'S2' ? 'on' : ''}">Semester 2</button></div></div>
+  <div class="tiles">
+    <div class="tile"><span class="k">Semester GPA</span><span class="v">${n2(g.unweighted)}</span><span class="s">${g.credits ? g.credits + (g.credits === 1 ? ' credit' : ' credits') : ''}</span></div>
+    <div class="tile"><span class="k">Weighted</span><span class="v">${n2(g.weighted)}</span><span class="s">Honors, AP, IB +1</span></div>
+  </div>
+  <section class="panel flush"><div class="scroll"><table>
+    <thead><tr><th>Course</th><th>${a}</th><th>${b}</th>${anyExam ? '<th>Exam</th>' : ''}<th>Semester</th><th class="hide-sm" style="text-align:right">Points</th></tr></thead>
+    <tbody>${list.map((c) => {
+      const res = E.semesterGrade(c, sem);
+      const gp = E.gradePoints(res.letter, c);
+      return `<tr><td><a href="#/course/${c.id}/${b}" style="color:var(--ink);text-decoration:none"><b>${h(c.name)}</b></a><div class="sub">${h(levelName(c))}</div></td><td>${cell(c, a)}</td><td>${cell(c, b)}</td>
+        ${anyExam ? `<td>${E.hasEOC(c, sem) ? h(c.exams[sem] ?? '—') : '<span class="muted">—</span>'}</td>` : ''}
+        <td style="white-space:nowrap">${badge(res.letter)} <span class="muted num">${Number.isFinite(res.pct) ? E.roundHalfUp(res.pct) + '%' : ''}</span></td><td class="hide-sm num" style="text-align:right;font-weight:700">${gp == null ? '—' : gp.toFixed(1)}</td></tr>`;
+    }).join('') || '<tr><td colspan="6" class="empty">No courses this semester.</td></tr>'}</tbody></table></div></section>`;
 }
 
 // ---------- GPA ----------
@@ -282,76 +316,75 @@ function viewGPA() {
   const year = E.gpa(entries);
   const s1 = E.gpa(entries.filter((e) => e.sem === 'S1'));
   const cum = E.combineGPA(data.prior, year);
-  return `<h1>GPA</h1>
-  <div class="stats">
-    <div class="stat"><div class="k">Semester 1</div><div class="v">${n2(s1.unweighted)} <span class="small muted">/ ${n2(s1.weighted)} w</span></div></div>
-    <div class="stat"><div class="k">This year (projected)</div><div class="v">${n2(year.unweighted)} <span class="small muted">/ ${n2(year.weighted)} w</span></div></div>
-    <div class="stat"><div class="k">Cumulative (projected)</div><div class="v">${n2(cum.unweighted)} <span class="small muted">/ ${n2(cum.weighted)} w</span></div></div>
+  return `<div class="head"><div class="t"><h1>GPA</h1></div></div>
+  <div class="tiles">
+    <div class="tile"><span class="k">Semester 1</span><span class="v">${n2(s1.unweighted)}</span><span class="s">Weighted <b>${n2(s1.weighted)}</b></span></div>
+    <div class="tile"><span class="k">This year</span><span class="v">${n2(year.unweighted)}</span><span class="s">Weighted <b>${n2(year.weighted)}</b></span></div>
+    <div class="tile"><span class="k">Cumulative</span><span class="v">${n2(cum.unweighted)}</span><span class="s">Weighted <b>${n2(cum.weighted)}</b></span></div>
   </div>
-  <div class="panel"><h2 style="margin-top:0">Before this year</h2>
-    <p class="small muted">From the transcript or last report card. Leave blank to see this year only.</p>
-    <div class="row">
-      <label class="field"><span>Unweighted GPA</span><input type="number" step="0.001" data-prior="unweighted" value="${h(data.prior.unweighted)}"></label>
-      <label class="field"><span>Weighted GPA</span><input type="number" step="0.001" data-prior="weighted" value="${h(data.prior.weighted)}"></label>
-      <label class="field"><span>Credits attempted</span><input type="number" step="0.5" data-prior="credits" value="${h(data.prior.credits)}"></label>
-    </div></div>
-  <div class="panel table-wrap"><table><tr><th>Semester</th><th>Course</th><th>Level</th><th>Credit</th><th>Grade</th><th>Points</th></tr>
-  ${entries.map((e) => `<tr><td>${e.sem}</td><td>${h(e.course.name)}</td><td>${h(LEVELS.find((x) => x[0] === e.course.level)[1])}</td><td>${h(e.credits)}</td><td>${badge(e.letter)}</td><td>${E.gradePoints(e.letter, e.course) == null ? '—' : E.gradePoints(e.letter, e.course).toFixed(1)}</td></tr>`).join('')}
-  </table></div>
-  <p class="small muted">${h(POLICY.gpaSummary)} <a href="#/rules">Full rules</a>.</p>`;
+  <section class="panel"><h2>Before this year</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:480px">
+      <label class="f">Unweighted<input type="number" step="0.001" data-prior="unweighted" value="${h(data.prior.unweighted)}" style="width:100%;text-align:left"></label>
+      <label class="f">Weighted<input type="number" step="0.001" data-prior="weighted" value="${h(data.prior.weighted)}" style="width:100%;text-align:left"></label>
+      <label class="f">Credits<input type="number" step="0.5" data-prior="credits" value="${h(data.prior.credits)}" style="width:100%;text-align:left"></label>
+    </div></section>
+  <section class="panel flush"><div class="scroll"><table>
+    <thead><tr><th>Course</th><th>Semester</th><th class="hide-sm">Credit</th><th>Grade</th><th style="text-align:right">Points</th></tr></thead>
+    <tbody>${entries.map((e) => { const gp = E.gradePoints(e.letter, e.course); return `<tr><td><b>${h(e.course.name)}</b><div class="sub">${h(levelName(e.course))}</div></td><td>${e.sem === 'S1' ? '1' : '2'}</td><td class="hide-sm num">${h(e.credits)}</td><td>${badge(e.letter)}</td><td class="num" style="text-align:right;font-weight:700">${gp == null ? '—' : gp.toFixed(1)}</td></tr>`; }).join('')}</tbody>
+  </table></div></section>`;
 }
 
 // ---------- schedule / attendance / documents ----------
-function needSync(what) {
-  return `<div class="panel"><p>${what} come from StudentVUE. <a href="#/login">Sign in</a> to load them.</p></div>`;
+function needSync(title, err) {
+  return `<div class="head"><div class="t"><h1>${title}</h1></div></div>
+  <section class="panel">${err ? `<span class="muted">${h(err)}</span>` : ''}<div class="row"><span class="spacer muted">Sign in to load this from StudentVUE.</span><a class="btn primary" href="#/login">Sign in</a></div></section>`;
 }
 function viewSchedule() {
   const s = data.extra && data.extra.schedule;
-  if (!s) return `<h1>Schedule</h1>${data.extra && data.extra.scheduleError ? `<div class="note warn">${h(data.extra.scheduleError)}</div>` : ''}${needSync('Schedules')}`;
-  return `<h1>Schedule</h1><p class="muted">${h(s.termName)}</p>
-  <div class="panel table-wrap"><table><tr><th>Period</th><th>Course</th><th>Teacher</th><th>Room</th></tr>
-  ${s.classes.map((c) => `<tr><td>${h(c.period)}</td><td>${h(c.name)}</td><td>${h(c.teacher)}</td><td>${h(c.room)}</td></tr>`).join('')}</table></div>
-  ${s.terms.length ? `<h2>Terms</h2><div class="panel table-wrap"><table><tr><th>Term</th><th>Starts</th><th>Ends</th></tr>${s.terms.map((t) => `<tr><td>${h(t.name)}</td><td>${h(t.start)}</td><td>${h(t.end)}</td></tr>`).join('')}</table></div>` : ''}`;
+  if (!s) return needSync('Schedule', data.extra && data.extra.scheduleError);
+  return `<div class="head"><div class="t">${s.termName ? `<span class="sub">${h(s.termName)}</span>` : ''}<h1>Schedule</h1></div></div>
+  <section class="panel flush"><div class="scroll"><table><thead><tr><th>Period</th><th>Course</th><th>Teacher</th><th class="hide-sm">Room</th></tr></thead>
+  <tbody>${s.classes.map((c) => `<tr><td class="num"><b>${h(c.period)}</b></td><td><b>${h(c.name)}</b></td><td>${h(c.teacher)}</td><td class="hide-sm">${h(c.room)}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 function viewAttendance() {
   const a = data.extra && data.extra.attendance;
-  if (!a) return `<h1>Attendance</h1>${data.extra && data.extra.attendanceError ? `<div class="note warn">${h(data.extra.attendanceError)}</div>` : ''}${needSync('Attendance records')}`;
+  if (!a) return needSync('Attendance', data.extra && data.extra.attendanceError);
   const max = Math.max(1, ...a.periods.map((p) => p.excused + p.unexcused + p.tardies));
-  return `<h1>Attendance</h1>
-  <div class="panel table-wrap"><table><tr><th>Period</th><th>Excused</th><th>Unexcused</th><th>Tardies</th><th style="width:40%"></th></tr>
-  ${a.periods.map((p) => `<tr><td>${h(p.period)}</td><td>${p.excused}</td><td>${p.unexcused}</td><td>${p.tardies}</td><td><div class="bar"><i style="width:${((p.excused + p.unexcused + p.tardies) / max) * 100}%"></i></div></td></tr>`).join('')}</table></div>
-  <h2>Days</h2><div class="panel table-wrap"><table><tr><th>Date</th><th>What</th><th>Periods</th></tr>
-  ${a.absences.map((x) => `<tr><td>${h(x.date)}</td><td>${h(x.description || x.reason)}${x.note ? '<div class="small muted">' + h(x.note) + '</div>' : ''}</td><td class="small">${x.periods.map((p) => h(p.period + ' ' + (p.reason || p.name))).join('<br>')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nothing recorded.</td></tr>'}</table></div>`;
+  return `<div class="head"><div class="t"><h1>Attendance</h1></div></div>
+  <section class="panel flush"><div class="scroll"><table><thead><tr><th>Period</th><th>Excused</th><th>Unexcused</th><th>Tardies</th><th class="hide-sm" style="width:35%"></th></tr></thead>
+  <tbody>${a.periods.map((p) => `<tr><td class="num"><b>${h(p.period)}</b></td><td class="num">${p.excused}</td><td class="num">${p.unexcused}</td><td class="num">${p.tardies}</td><td class="hide-sm"><div class="prog"><i class="bg-B" style="width:${((p.excused + p.unexcused + p.tardies) / max) * 100}%"></i></div></td></tr>`).join('')}</tbody></table></div></section>
+  <section class="panel flush"><div class="scroll"><table><thead><tr><th>Date</th><th>Absence</th><th>Periods</th></tr></thead>
+  <tbody>${a.absences.map((x) => `<tr><td class="num">${h(x.date)}</td><td><b>${h(x.description || x.reason)}</b>${x.note ? '<div class="sub">' + h(x.note) + '</div>' : ''}</td><td class="small">${x.periods.map((p) => h(p.period + ' ' + (p.reason || p.name))).join('<br>')}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Nothing recorded.</td></tr>'}</tbody></table></div></section>`;
 }
 function viewDocuments() {
   const d = data.extra && data.extra.documents;
-  if (!d) return `<h1>Documents</h1>${data.extra && data.extra.documentsError ? `<div class="note warn">${h(data.extra.documentsError)}</div>` : ''}${needSync('Report cards and documents')}`;
-  return `<h1>Documents</h1>
-  <div class="panel table-wrap"><table><tr><th>Date</th><th>Document</th><th></th></tr>
-  ${d.map((x) => `<tr><td>${h(x.date)}</td><td>${h(x.comment || x.name)}<div class="small muted">${h(x.type)}</div></td><td><button data-doc="${h(x.gu)}">Open</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">No documents.</td></tr>'}</table></div>
-  ${client ? '' : '<p class="small muted">Opening a document needs you to be signed in this session.</p>'}`;
+  if (!d) return needSync('Documents', data.extra && data.extra.documentsError);
+  return `<div class="head"><div class="t"><h1>Documents</h1></div></div>
+  <section class="panel flush"><div class="scroll"><table><thead><tr><th>Date</th><th>Document</th><th></th></tr></thead>
+  <tbody>${d.map((x) => `<tr><td class="num">${h(x.date)}</td><td><b>${h(x.comment || x.name)}</b><div class="sub">${h(x.type)}</div></td><td style="text-align:right"><button data-doc="${h(x.gu)}">Open</button></td></tr>`).join('') || '<tr><td colspan="3" class="empty">No documents.</td></tr>'}</tbody></table></div></section>`;
 }
 
 // ---------- settings / rules ----------
 function viewSettings() {
-  return `<h1>Settings</h1>
-  <div class="panel"><h2 style="margin-top:0">StudentVUE relay</h2>
-    <p class="small muted">Browsers can't talk to StudentVUE directly, so MelonFork goes through a small relay (the same job GradeMelon's server does). The relay passes requests to MCPS and keeps nothing.</p>
-    <label class="field"><span>Relay address</span><input id="relay" value="${h(settings.relay)}" placeholder="https://melonfork-relay.example.workers.dev"></label>
-    <div class="row"><button data-act="saveRelay" class="primary">Save</button><button data-act="ping">Test</button>${settings.username ? `<button data-act="forget">Forget saved login</button>` : ''}</div>
-  </div>
-  <div class="panel"><h2 style="margin-top:0">Your data</h2>
-    <div class="row"><button data-act="export">Download a backup</button><label class="btn">Restore a backup<input type="file" id="importFile" accept=".json" hidden></label>
-    <button data-act="addcourse">Add a course by hand</button><button data-act="demo">Load sample grades</button><button data-act="clear" class="danger">Erase everything</button></div>
-  </div>
-  <div class="panel"><h2 style="margin-top:0">Appearance</h2>
-    <select id="themeSel">${['auto', 'light', 'dark'].map((t) => `<option ${data.theme === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-  <p class="small muted"><a href="#/rules">How grades are calculated (MCPS rules and sources)</a></p>`;
+  return `<div class="head"><div class="t"><h1>Settings</h1></div></div>
+  <section class="panel"><h2>StudentVUE</h2>
+    <div class="row">${settings.username ? `<span class="spacer">Signed in as <b>${h(settings.username)}</b></span><a class="btn" href="#/login">Sign in again</a><button data-act="forget">Forget login</button>` : `<span class="spacer muted">Not signed in</span><a class="btn primary" href="#/login">Sign in</a>`}</div>
+    <details><summary>Relay</summary><div class="row" style="margin-top:8px"><input id="relay" value="${h(settings.relay)}" aria-label="Relay address" style="flex:1;min-width:220px"><button data-act="saveRelay">Save</button><button data-act="ping">Test</button></div></details>
+  </section>
+  <section class="panel"><h2>Grades</h2>
+    <div class="row"><button data-act="addcourse">${ico('plus', 16)} Add course</button><button data-act="export">Back up</button><label class="btn">Restore<input type="file" id="importFile" accept=".json" hidden></label><button data-act="demo">Sample grades</button><button data-act="clear" class="danger">Erase all</button></div>
+  </section>
+  <section class="panel phone-only"><div class="row"><a class="btn" href="#/attendance">${ico('attendance', 18)} Attendance</a><a class="btn" href="#/documents">${ico('documents', 18)} Documents</a></div></section>
+  <section class="panel"><h2>Appearance</h2>
+    <div class="seg" role="group" aria-label="Theme" style="align-self:flex-start">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([k, v]) => `<button data-theme="${k}" class="${data.theme === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+  </section>
+  <a href="#/rules" class="small">MCPS grading rules and sources</a>`;
 }
 function viewRules() {
-  return `<h1>How MelonFork calculates grades</h1>
+  return `<a href="#/settings" class="row small" style="font-weight:700;text-decoration:none;min-height:32px">${ico('back', 16)} Settings</a>
+  <div class="head"><div class="t"><h1>Grading rules</h1></div></div>
   ${POLICY.rulesHtml}
-  <h2>Sources</h2><ul class="small">${POLICY.sources.map((s) => `<li><a href="${h(s.url)}" target="_blank" rel="noopener noreferrer">${h(s.title)}</a></li>`).join('')}</ul>`;
+  <section class="panel"><h2>Sources</h2><ul class="small" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">${POLICY.sources.map((s) => `<li><a href="${h(s.url)}" target="_blank" rel="noopener noreferrer">${h(s.title)}</a></li>`).join('')}</ul></section>`;
 }
 
 // ---------- events ----------
@@ -369,8 +402,8 @@ function wire(page, r) {
       saveSettings();
       doSync(settings.username, f.p.value);
     };
-    q('#demo').onclick = () => { data = normalize(demoData()); persist(); location.hash = '#/grades'; render(); };
-    q('#manual').onclick = () => { addCourse(); };
+    q('#demo').onclick = () => { if (data.courses.length && !(data.extra && data.extra.demo) && !confirm('Replace your grades with sample grades?')) return; data = normalize(demoData()); persist(); location.hash = '#/grades'; render(); };
+    const man = q('#manual'); if (man) man.onclick = (e) => { e.preventDefault(); addCourse(); };
   }
   if (page === 'grades') {
     qa('[data-mp]').forEach((b) => (b.onclick = () => (location.hash = '#/grades/' + b.dataset.mp)));
@@ -390,7 +423,8 @@ function wire(page, r) {
 
 function wireSettings(q) {
   $app.onclick = async (e) => {
-    const act = e.target.dataset.act;
+    const t = e.target.closest('[data-act]');
+    const act = t && t.dataset.act;
     if (!act) return;
     if (act === 'saveRelay') { settings.relay = q('#relay').value.trim().replace(/\/+$/, ''); saveSettings(); toast('Saved'); }
     if (act === 'ping') {
@@ -410,7 +444,7 @@ function wireSettings(q) {
   q('#importFile').onchange = async (e) => {
     try { data = normalize(JSON.parse(await e.target.files[0].text())); persist(); toast('Backup restored'); location.hash = '#/grades'; } catch (_) { toast('That file is not a MelonFork backup'); }
   };
-  q('#themeSel').onchange = (e) => { data.theme = e.target.value; persist(); theme(); };
+  [...$app.querySelectorAll('[data-theme]')].forEach((b) => (b.onclick = () => { data.theme = b.dataset.theme; persist(); render(); }));
 }
 
 function addCourse() {
@@ -475,30 +509,30 @@ function wireCourse(r, q, qa) {
       toast(`Added ${assignments.length} score${assignments.length > 1 ? 's' : ''}${skipped.length ? `, skipped ${skipped.length} line${skipped.length > 1 ? 's' : ''}` : ''}`);
       commit();
     }
-    if (act === 'opt') {
-      const L = q('#optL').value, cat = q('#optCat').value, pts = Number(q('#optPts').value);
-      let target = E.minPctFor(L);
-      const forSem = q('#optFor').value === 'sem';
-      const out = q('#optOut');
-      if (forSem) {
-        const row = E.secondMPNeeds(c, semesterOf(mp)).find((x) => x.letter === L);
-        out.style.display = 'block';
-        if (!row || row.need === null) { out.textContent = `A semester ${L} is out of reach even with 100% in ${mp}.`; return; }
-        if (row.need === 0) { out.textContent = `The semester ${L} is already guaranteed.`; return; }
-        target = row.need - 0.5;
-      }
-      const goal = forSem ? `a semester ${L} (${mp} at ${target}% or higher)` : `a ${L} (${target}% or higher) for ${mp}`;
-      const res = E.needOnNext(c, m, cat, pts, target);
-      out.style.display = 'block';
-      if (!res) out.textContent = 'Enter how many points the assignment is worth.';
-      else if (res.need === 0) out.textContent = `You keep ${goal} even with a 0 on it (a full score would give ${mp} ${pct(res.best, 2)}).`;
-      else if (res.need === Infinity || res.need > pts) out.textContent = `Not reachable with one ${pts}-point ${cat} assignment: a perfect score would give ${mp} ${pct(res.best, 2)}. You'd need more assignments, or a retake.`;
-      else out.textContent = `You need at least ${(Math.ceil(res.need * 100) / 100).toFixed(2)} / ${pts} (${pct((res.need / pts) * 100)}) for ${goal}.`;
-    }
     if (act === 'addcat') { c.categories.push({ name: 'New category', weight: 0 }); commit(); }
     if (act === 'delcat') { c.categories.splice(Number(t.dataset.i), 1); commit(); }
     if (act === 'delcourse') { if (confirm(`Delete ${c.name}?`)) { data.courses.splice(data.courses.indexOf(c), 1); persist(); location.hash = '#/grades'; } }
   };
+  const opt = () => {
+    const out = q('#optOut');
+    if (!out) return;
+    const [kind, L] = q('#optGoal').value.split(':');
+    const cat = q('#optCat').value, pts = Number(q('#optPts').value);
+    let target = E.minPctFor(L);
+    if (kind === 'sem') {
+      const r = E.secondMPNeeds(c, semesterOf(mp)).find((x) => x.letter === L);
+      if (!r || r.need === null) { out.innerHTML = `<span class="muted">Out of reach this semester.</span>`; return; }
+      if (r.need === 0) { out.innerHTML = `<span class="muted">Already locked in.</span>`; return; }
+      target = r.need - 0.5;
+    }
+    const res = E.needOnNext(c, m, cat, pts, target);
+    if (!res) { out.textContent = ''; return; }
+    if (res.need === 0) out.innerHTML = `<span class="muted">Locked in, even with a 0.</span>`;
+    else if (res.need === Infinity || res.need > pts) out.innerHTML = `<span class="muted">Not reachable with one ${pts}-point assignment (max ${pct(res.best)}).</span>`;
+    else { const n = Math.ceil(res.need * 100) / 100; out.innerHTML = `<b class="n num">${+n.toFixed(2)} / ${pts}</b> <span class="muted num">${pct((n / pts) * 100)}</span>`; }
+  };
+  ['#optGoal', '#optCat', '#optPts'].forEach((sel) => { const el = q(sel); if (el) el.oninput = el.onchange = opt; });
+  opt();
   qa('[data-cat-name]').forEach((i) => (i.onchange = () => {
     const k = c.categories[Number(i.dataset.catName)];
     const old = k.name;
