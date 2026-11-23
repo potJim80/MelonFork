@@ -67,8 +67,15 @@ export function mpPercent(course, key) {
   if (!mp) return NaN;
   const o = num(mp.override);
   if (Number.isFinite(o)) return o;
-  if (mp.reported && Number.isFinite(num(mp.reported.pct)) && !hasWhatIf(mp)) return num(mp.reported.pct);
-  return markingPeriod(course, mp).pct;
+  const calc = markingPeriod(course, mp).pct;
+  if (mp.reported && Number.isFinite(num(mp.reported.pct)) && !hasWhatIf(mp)) {
+    const rep = num(mp.reported.pct);
+    // StudentVUE reports one decimal. When our own calculation agrees with it (same value to
+    // StudentVUE's precision and the same whole-number grade), show ours: same grade, more digits.
+    if (Number.isFinite(calc) && Math.abs(calc - rep) <= 0.05 + 1e-9 && roundHalfUp(calc) === roundHalfUp(rep)) return calc;
+    return rep;
+  }
+  return calc;
 }
 
 export function mpLetter(course, key) {

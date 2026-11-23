@@ -76,6 +76,16 @@ eq('reported used', E.mpPercent(c, 'MP1'), 45);
 c.mps.MP1.assignments[1].removed = true;
 eq('what-if overrides reported', E.mpPercent(c, 'MP1'), 90);
 
+// Precision: StudentVUE 88.2 + our calc 88.24 -> show 88.24; disagreement -> keep StudentVUE's
+c = course({ MP1: { assignments: [{ name: 'T', category: 'All Tasks / Assessments', earned: 88.24, possible: 100 }] } });
+c.mps.MP1.reported = { letter: 'B', pct: 88.2 };
+eq('more digits when they agree', E.mpPercent(c, 'MP1'), 88.24);
+c.mps.MP1.reported = { letter: 'B', pct: 86.0 };
+eq('StudentVUE wins when they differ', E.mpPercent(c, 'MP1'), 86);
+c = course({ MP1: { assignments: [{ name: 'T', category: 'All Tasks / Assessments', earned: 89.46, possible: 100 }] } });
+c.mps.MP1.reported = { letter: 'A', pct: 89.5 };
+eq('never changes the whole-number grade', E.mpPercent(c, 'MP1'), 89.5);
+
 // Optimizer: tasks 40/50 so far (80%); next 50-pt task needed for A (89.5) -> (x+40)/100 >= .895 -> 49.5
 c = course({ MP1: { assignments: [{ name: 'Q', category: 'All Tasks / Assessments', earned: 40, possible: 50 }] } });
 let r = E.needOnNext(c, c.mps.MP1, 'All Tasks / Assessments', 50, 89.5);

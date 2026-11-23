@@ -20,7 +20,7 @@ const TERMS = [['year', 'Full year'], ['S1', 'Semester 1 only'], ['S2', 'Semeste
 
 // ---------- helpers ----------
 const h = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const pct = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) + '%' : '—');
+const pct = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) + '%' : '—');
 const n2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
 const lk = (L) => (L && 'ABCDE'.includes(L[0]) ? L[0] : 'none');
 const badge = (L, size = '') => `<span class="L ${size} L-${L === 'I' ? 'I' : lk(L)}">${h(L || '–')}</span>`;
@@ -195,7 +195,7 @@ function viewCourse(r) {
   const rep = m.reported && Number.isFinite(Number(m.reported.pct)) && m.reported.pct !== null ? `StudentVUE ${pct(Number(m.reported.pct))}` : '';
   const mpTabs = MPS.filter((x) => inTerm(c, semesterOf(x))).map((x) => {
     const xp = E.mpPercent(c, x);
-    return `<button data-cmp="${x}" class="${x === mp ? 'on' : ''}" aria-pressed="${x === mp}">${x}${x !== mp && Number.isFinite(xp) ? '<span class="hide-sm"> · ' + E.roundHalfUp(xp) + '%</span>' : ''}</button>`;
+    return `<button data-cmp="${x}" class="${x === mp ? 'on' : ''}" aria-pressed="${x === mp}">${x}${x !== mp && Number.isFinite(xp) ? '<span class="hide-sm"> · ' + pct(xp) + '</span>' : ''}</button>`;
   }).join('');
   return `<a href="#/grades/${mp}" class="row small" style="font-weight:700;text-decoration:none;min-height:32px">${ico('back', 16)} All grades</a>
   <section class="panel ch">
@@ -272,15 +272,15 @@ function semesterPanel(c, sem) {
   if (!inTerm(c, sem)) return '';
   const [a, b] = POLICY.semesters[sem];
   const res = E.semesterGrade(c, sem);
-  const auto = (key) => { const p = E.mpPercent({ ...c, mps: { ...c.mps, [key]: { ...c.mps[key], override: '' } } }, key); return Number.isFinite(p) ? String(E.roundHalfUp(p)) : '—'; };
-  const inp = (key) => `<label class="f">${key}<input type="number" step="any" min="0" max="100" data-ovr="${key}" value="${h(c.mps[key].override)}" placeholder="${h(auto(key))}" style="width:72px"></label>`;
+  const auto = (key) => { const p = E.mpPercent({ ...c, mps: { ...c.mps, [key]: { ...c.mps[key], override: '' } } }, key); return Number.isFinite(p) ? p.toFixed(2) : '—'; };
+  const inp = (key) => `<label class="f">${key}<input type="number" step="any" min="0" max="100" data-ovr="${key}" value="${h(c.mps[key].override)}" placeholder="${h(auto(key))}" style="width:84px"></label>`;
   const exam = E.hasEOC(c, sem) ? `<label class="f">Exam<input type="number" step="any" min="50" max="100" data-exam="${sem}" value="${h(c.exams[sem] ?? '')}" placeholder="—" style="width:72px"></label>` : '';
   const needs = E.secondMPNeeds(c, sem);
   return `<section class="panel" aria-label="${sem === 'S1' ? 'Semester 1' : 'Semester 2'}">
-    <div class="row"><h2 class="spacer">${sem === 'S1' ? 'Semester 1' : 'Semester 2'}</h2>${Number.isFinite(res.pct) ? `<span class="num muted">${E.roundHalfUp(res.pct)}%</span>` : ''}${badge(res.letter, 'big')}</div>
+    <div class="row"><h2 class="spacer">${sem === 'S1' ? 'Semester 1' : 'Semester 2'}</h2>${Number.isFinite(res.pct) ? `<span class="num muted">${pct(res.pct)}</span>` : ''}${badge(res.letter, 'big')}</div>
     <div class="row" style="align-items:flex-end">${inp(a)}${inp(b)}${exam}</div>
     ${needs.length ? `<table class="need"><caption style="text-align:left;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding-bottom:4px">${b} needed</caption>
-      ${needs.map((x) => `<tr><td><b class="t-${x.letter}">${x.letter}</b></td><td style="text-align:right" class="num">${x.need === null ? '<span class="muted">out of reach</span>' : x.need === 0 ? '<span class="muted">locked in</span>' : '<b>' + x.need + '%</b>'}</td></tr>`).join('')}</table>` : ''}
+      ${needs.map((x) => `<tr><td><b class="t-${x.letter}">${x.letter}</b></td><td style="text-align:right" class="num">${x.need === null ? '<span class="muted">out of reach</span>' : x.need === 0 ? '<span class="muted">locked in</span>' : '<b>' + pct(x.need - 0.5) + '</b>'}</td></tr>`).join('')}</table>` : ''}
   </section>`;
 }
 
@@ -291,7 +291,7 @@ function viewSemester(r) {
   const list = data.courses.filter((c) => inTerm(c, sem));
   const anyExam = list.some((c) => E.hasEOC(c, sem));
   const g = semGPA(sem);
-  const cell = (c, k) => { const p = E.mpPercent(c, k); return Number.isFinite(p) ? `<b class="t-${lk(E.letterFor(p))}">${E.letterFor(p)}</b> <span class="muted">${E.roundHalfUp(p)}%</span>` : '<span class="muted">—</span>'; };
+  const cell = (c, k) => { const p = E.mpPercent(c, k); return Number.isFinite(p) ? `<b class="t-${lk(E.letterFor(p))}">${E.letterFor(p)}</b> <span class="muted">${pct(p)}</span>` : '<span class="muted">—</span>'; };
   return `<div class="head"><div class="t"><h1>Semester grades</h1></div>
     <div class="seg" role="group" aria-label="Semester"><button data-sem="S1" class="${sem === 'S1' ? 'on' : ''}">Semester 1</button><button data-sem="S2" class="${sem === 'S2' ? 'on' : ''}">Semester 2</button></div></div>
   <div class="tiles">
@@ -305,7 +305,7 @@ function viewSemester(r) {
       const gp = E.gradePoints(res.letter, c);
       return `<tr><td><a href="#/course/${c.id}/${b}" style="color:var(--ink);text-decoration:none"><b>${h(c.name)}</b></a><div class="sub">${h(levelName(c))}</div></td><td>${cell(c, a)}</td><td>${cell(c, b)}</td>
         ${anyExam ? `<td>${E.hasEOC(c, sem) ? h(c.exams[sem] ?? '—') : '<span class="muted">—</span>'}</td>` : ''}
-        <td style="white-space:nowrap">${badge(res.letter)} <span class="muted num">${Number.isFinite(res.pct) ? E.roundHalfUp(res.pct) + '%' : ''}</span></td><td class="hide-sm num" style="text-align:right;font-weight:700">${gp == null ? '—' : gp.toFixed(1)}</td></tr>`;
+        <td style="white-space:nowrap">${badge(res.letter)} <span class="muted num">${Number.isFinite(res.pct) ? pct(res.pct) : ''}</span></td><td class="hide-sm num" style="text-align:right;font-weight:700">${gp == null ? '—' : gp.toFixed(1)}</td></tr>`;
     }).join('') || '<tr><td colspan="6" class="empty">No courses this semester.</td></tr>'}</tbody></table></div></section>`;
 }
 
