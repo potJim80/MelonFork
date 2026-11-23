@@ -29,7 +29,7 @@ Browsers can't call StudentVUE directly, so the requests go through [`relay/work
 
 Grade Melon routes everyone's password through its own server instead.
 
-### Set up the relay (once, free)
+### Set up your own relay (optional; this site already has one)
 
 1. Make a free Cloudflare account at https://dash.cloudflare.com/sign-up.
 2. Deploy the relay:

@@ -6,9 +6,10 @@ import { StudentVue, syncAll } from './svue.js';
 import { demoData } from './demo.js';
 
 const SETTINGS = 'melonfork.settings';
-const DEFAULT_RELAY = ''; // filled in after the relay is deployed
+const DEFAULT_RELAY = 'https://melonfork-relay.akbarinmahdi.workers.dev';
 let data = load();
 let settings = Object.assign({ relay: DEFAULT_RELAY, remember: false, username: '', password: '' }, JSON.parse(localStorage.getItem(SETTINGS) || '{}'));
+if (!settings.relay) settings.relay = DEFAULT_RELAY;
 let client = null;
 let busy = '';
 
