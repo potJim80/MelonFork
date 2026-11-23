@@ -1,0 +1,9 @@
+{
+  "name": "MelonFork",
+  "short_name": "MelonFork",
+  "start_url": "./#/grades",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2f8f4e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
