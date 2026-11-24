@@ -211,7 +211,45 @@ export function attendanceSummary(att) {
   };
 }
 
-// Pull every marking period's gradebook (+ schedule, attendance, document list).
+// Which marking period a StudentVUE page belongs to, interim pages included:
+// "MP2 Interim" -> {key: 'MP2', interim: true}.
+export function periodInfo(name) {
+  const n = txt(name).toLowerCase();
+  const d = n.match(/([1-4])/);
+  return { key: d ? 'MP' + d[1] : null, interim: /progress|interim|mid/.test(n) };
+}
+
+const assignmentId = (a) => txt(a.gradebookID) || [txt(a.measure), txt(a.dueDate), txt(a.type), txt(a.points)].join('|');
+
+// StudentVUE's marking-period page leaves out assignments the teacher put in that marking
+// period but dated before it starts (e.g. Psych work from late October counted in MP2); those
+// show only on the interim page. Combine a marking period's pages into one gradebook so every
+// assignment in it is counted. `elsewhere` holds ids already on another marking period's page.
+export function combinePages(pages, elsewhere = new Set()) {
+  const [main, ...rest] = pages; // main = the marking-period page when there is one
+  const courses = main.courses.map((c) => {
+    const mark = (c.marks || [])[0];
+    if (!mark) return c;
+    const seen = new Set((mark.assignments || []).map(assignmentId));
+    const extra = [];
+    for (const gb of rest) {
+      const other = gb.courses.find((x) => courseKey(x) === courseKey(c));
+      const om = other && (other.marks || [])[0];
+      for (const a of (om && om.assignments) || []) {
+        const id = assignmentId(a);
+        if (seen.has(id) || elsewhere.has(id)) continue;
+        seen.add(id);
+        extra.push(a);
+      }
+    }
+    return extra.length ? { ...c, marks: [{ ...mark, assignments: [...(mark.assignments || []), ...extra] }, ...c.marks.slice(1)] } : c;
+  });
+  // Courses that only appear on a later page (rare) are added as they are.
+  for (const gb of rest) for (const c of gb.courses) if (!courses.some((x) => courseKey(x) === courseKey(c))) courses.push(c);
+  return { ...main, courses };
+}
+
+// Pull every marking period's gradebook, interim pages included (+ schedule, attendance, document list).
 export async function syncAll(client, courses, onStep = () => {}) {
   onStep('Signing in…');
   await client.login();
@@ -219,23 +257,34 @@ export async function syncAll(client, courses, onStep = () => {}) {
   const first = await client.gradebook();
   const periods = (first.reportingPeriods || []).map((p, i) => ({ index: Number(p.index), name: txt(p.gradePeriod), start: txt(p.startDate), end: txt(p.endDate), i }));
   const current = txt(first.reportingPeriod && first.reportingPeriod.gradePeriod);
-  const real = periods.filter((p) => !/progress|interim|mid/i.test(p.name));
+  const real = periods.filter((p) => !periodInfo(p.name).interim);
   const mpPeriods = real.map((p, i) => ({ ...p, key: mpKeyFor(p.name, i) })).filter((p) => p.key);
   const today = new Date();
-  // Keep StudentVUE's own pages (current one, often an interim, plus each marking period)
-  // so differences between them can be checked.
-  const raw = { [current || 'current']: first.courses };
-  for (const p of mpPeriods) {
-    const start = new Date(p.start);
-    if (Number.isFinite(start.getTime()) && start > today) continue; // future period: nothing yet
+  const started = (p) => { const s = new Date(p.start); return !(Number.isFinite(s.getTime()) && s > today); };
+  // Fetch every page that has started, grouped by marking period.
+  const pages = {}; // key -> {main, interims: []}
+  for (const p of periods) {
+    const info = periodInfo(p.name);
+    const key = info.interim ? info.key : (mpPeriods.find((m) => m.index === p.index) || {}).key;
+    if (!key || !started(p)) continue;
     onStep(`Reading ${p.name}…`);
     const gb = p.name === current ? first : await client.gradebook(p.index);
-    raw[p.name] = gb.courses;
-    mergeGradebook(courses, gb, p.key);
+    const g = (pages[key] = pages[key] || { main: null, interims: [] });
+    if (info.interim) g.interims.push(gb); else g.main = gb;
   }
-  if (!mpPeriods.length) mergeGradebook(courses, first, 'MP1');
-  const extra = { periods: mpPeriods.map(({ key, name, start, end }) => ({ key, name, start, end })), current,
-    allPeriods: periods.map(({ index, name, start, end }) => ({ index, name, start, end })), raw };
+  // Ids each marking-period page claims, so an interim page never pulls in another MP's work.
+  const claimed = {};
+  for (const [key, g] of Object.entries(pages)) {
+    claimed[key] = new Set();
+    if (g.main) for (const c of g.main.courses) for (const a of ((c.marks || [])[0] || {}).assignments || []) claimed[key].add(assignmentId(a));
+  }
+  for (const [key, g] of Object.entries(pages)) {
+    const elsewhere = new Set(Object.entries(claimed).filter(([k]) => k !== key).flatMap(([, ids]) => [...ids]));
+    const list = g.main ? [g.main, ...g.interims] : g.interims;
+    if (list.length) mergeGradebook(courses, combinePages(list, elsewhere), key);
+  }
+  if (!Object.keys(pages).length) mergeGradebook(courses, first, 'MP1');
+  const extra = { periods: mpPeriods.map(({ key, name, start, end }) => ({ key, name, start, end })), current, raw: undefined };
   try { onStep('Reading schedule…'); extra.schedule = scheduleRows(await client.schedule()); } catch (e) { extra.scheduleError = e.message; }
   try { onStep('Reading attendance…'); extra.attendance = attendanceSummary(await client.attendance()); } catch (e) { extra.attendanceError = e.message; }
   try {

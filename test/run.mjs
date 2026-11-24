@@ -1,7 +1,7 @@
 // node test/run.mjs — checks the grade math against the MCPS rules and examples.
 import * as E from '../js/engine.js';
 import { parseScores } from '../js/paste.js';
-import { mergeGradebook, mpKeyFor, guessLevel } from '../js/svue.js';
+import { mergeGradebook, mpKeyFor, guessLevel, syncAll, periodInfo } from '../js/svue.js';
 import { demoData } from '../js/demo.js';
 import { normalize } from '../js/store.js';
 
@@ -70,21 +70,15 @@ c = course({ MP1: { assignments: [
   { name: 'Lab', category: 'All Tasks / Assessments', earned: '', possible: 50, missing: true },
 ] } });
 eq('missing = 0', E.markingPeriod(c, c.mps.MP1).pct, 45);
-// StudentVUE's reported % is used until a what-if edit
+// The grade comes from the assignments by the MCPS rules; StudentVUE's number only when there are none
 c.mps.MP1.reported = { letter: 'E', pct: 45.0 };
-eq('reported used', E.mpPercent(c, 'MP1'), 45);
+eq('calc beats reported', E.mpPercent(c, 'MP1'), 45);
 c.mps.MP1.assignments[1].removed = true;
-eq('what-if overrides reported', E.mpPercent(c, 'MP1'), 90);
-
-// Precision: StudentVUE 88.2 + our calc 88.24 -> show 88.24; disagreement -> keep StudentVUE's
-c = course({ MP1: { assignments: [{ name: 'T', category: 'All Tasks / Assessments', earned: 88.24, possible: 100 }] } });
-c.mps.MP1.reported = { letter: 'B', pct: 88.2 };
-eq('more digits when they agree', E.mpPercent(c, 'MP1'), 88.24);
-c.mps.MP1.reported = { letter: 'B', pct: 86.0 };
-eq('StudentVUE wins when they differ', E.mpPercent(c, 'MP1'), 86);
-c = course({ MP1: { assignments: [{ name: 'T', category: 'All Tasks / Assessments', earned: 89.46, possible: 100 }] } });
-c.mps.MP1.reported = { letter: 'A', pct: 89.5 };
-eq('never changes the whole-number grade', E.mpPercent(c, 'MP1'), 89.5);
+eq('what-if counts', E.mpPercent(c, 'MP1'), 90);
+eq('actual ignores what-ifs', E.actualPercent(c, 'MP1'), 45);
+c = course({ MP1: { assignments: [] } });
+c.mps.MP1.reported = { letter: 'B', pct: 86 };
+eq('reported when nothing to calculate', E.mpPercent(c, 'MP1'), 86);
 
 // Optimizer: tasks 40/50 so far (80%); next 50-pt task needed for A (89.5) -> (x+40)/100 >= .895 -> 49.5
 c = course({ MP1: { assignments: [{ name: 'Q', category: 'All Tasks / Assessments', earned: 40, possible: 50 }] } });
@@ -134,6 +128,31 @@ mergeGradebook(merged, gb, 'MP2');
 eq('merge same course again', merged.length, 1);
 eq('mp key', [mpKeyFor('MP1', 0), mpKeyFor('Quarter 3', 2), mpKeyFor('1st Progress', 0), mpKeyFor('Fall', 1)], ['MP1', 'MP3', null, 'MP2']);
 eq('levels', [guessLevel('AP Biology A'), guessLevel('Precalculus Hon A'), guessLevel('English 12 A')], ['ap', 'honors', 'regular']);
+
+// Interim pages: StudentVUE's MP2 page can leave out MP2 work dated before MP2 starts; it shows
+// only on the MP2 Interim page. Shape of the real AP Psych case, 2026-11-24 (StudentVUE showed 91).
+{
+  const W = [{ type: 'All Tasks / Assessments', weight: '90%' }, { type: 'Practice / Preparation', weight: '10%' }, { type: 'TOTAL', weight: '100%' }];
+  const A = (id, cat, e, p, due) => ({ gradebookID: id, measure: 'a' + id, type: cat === 'T' ? 'All Tasks / Assessments' : 'Practice / Preparation', points: `${e} / ${p}`, dueDate: due });
+  const page = (name, raw, list) => ({ courses: [{ courseID: 'PSY', period: '4', title: 'AP Psychology A (PSY)', marks: [{ markName: name, calculatedScoreString: '', calculatedScoreRaw: raw, gradeCalculationSummary: W, assignments: list }] }] });
+  const mp1 = [A(1, 'T', 9, 10, '10/16/2020'), A(2, 'P', 12, 12, '10/12/2020')];
+  const late = [A(10, 'P', 5, 5, '10/29/2020'), A(11, 'T', 10, 10, '10/29/2020'), A(12, 'T', 5, 5, '10/27/2020'), A(13, 'P', 10, 10, '10/26/2020'), A(14, 'P', 10, 10, '10/23/2020')];
+  const mp2 = [A(20, 'P', 10, 10, '11/13/2020'), A(21, 'P', 10, 10, '11/9/2020'), A(22, 'T', 11, 14, '11/6/2020'), A(23, 'T', 18, 20, '11/5/2020')];
+  const periods = [['MP1 Interim', '8/25/2020', '10/2/2020'], ['MP1', '8/25/2020', '10/30/2020'], ['MP2 Interim', '10/5/2020', '12/10/2020'], ['MP2', '11/4/2020', '1/22/2021'], ['MP3', '1/26/2099', '4/9/2099']]
+    .map(([gradePeriod, startDate, endDate], index) => ({ index, gradePeriod, startDate, endDate }));
+  const books = { 0: page('MP1 Interim', '96', mp1), 1: page('MP1', '96', mp1), 2: page('MP2 Interim', '91', [...mp2, ...late, mp1[0]]), 3: page('MP2', '87', mp2) };
+  const client = {
+    login: async () => {}, schedule: async () => null, attendance: async () => null, documents: async () => [],
+    gradebook: async (i) => ({ ...(i == null ? books[2] : books[i]), reportingPeriods: periods, reportingPeriod: { gradePeriod: 'MP2 Interim' } }),
+  };
+  const list = [];
+  await syncAll(client, list);
+  eq('interim-only work counted in MP2', list[0].mps.MP2.assignments.length, 9);
+  eq('MP2 matches StudentVUE interim', Math.round(E.mpPercent(list[0], 'MP2') * 100) / 100, 90.82);
+  eq('MP1 work not pulled into MP2', list[0].mps.MP1.assignments.length, 2);
+  eq('future MP left empty', list[0].mps.MP3, undefined);
+  eq('period info', [periodInfo('MP2 Interim'), periodInfo('MP3')], [{ key: 'MP2', interim: true }, { key: 'MP3', interim: false }]);
+}
 
 // Demo data loads and produces grades
 const demo = normalize(demoData());

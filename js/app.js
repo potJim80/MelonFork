@@ -192,7 +192,8 @@ function viewCourse(r) {
   const whatIf = E.hasWhatIf(m) || m.override !== '';
   const cats = c.categories.length ? c.categories : [{ name: 'Total Points' }];
   const catOpts = (sel) => cats.map((k) => `<option ${k.name === sel ? 'selected' : ''}>${h(k.name)}</option>`).join('');
-  const rep = m.reported && Number.isFinite(Number(m.reported.pct)) && m.reported.pct !== null ? `StudentVUE ${pct(Number(m.reported.pct))}` : '';
+  const actual = E.actualPercent(c, mp);
+  const rep = Number.isFinite(actual) ? `Actual ${pct(actual)}` : '';
   const mpTabs = MPS.filter((x) => inTerm(c, semesterOf(x))).map((x) => {
     const xp = E.mpPercent(c, x);
     return `<button data-cmp="${x}" class="${x === mp ? 'on' : ''}" aria-pressed="${x === mp}">${x}${x !== mp && Number.isFinite(xp) ? '<span class="hide-sm"> · ' + pct(xp) + '</span>' : ''}</button>`;
