@@ -6,7 +6,7 @@ A grade viewer and calculator for MCPS students that follows the 2026-27 MCPS gr
 
 ## What it does
 
-- **Gradebook**: every marking period, with category weights, StudentVUE's own mark, and MelonFork's calculation.
+- **Gradebook**: every marking period, with category weights. Each grade is MelonFork's own calculation by the MCPS rules. StudentVUE's marking-period page can leave out work that only shows on its interim page, so MelonFork reads both and counts every assignment.
 - **What-ifs**: change any score, leave assignments out, add made-up ones, then undo.
 - **Grade optimizer**: the score you need on the next assignment to reach a letter for the marking period *or* for the semester.
 - **Semester grades, done the MCPS way**: since 2025-26 the semester grade is the average of the two marking-period percentages, each rounded to a whole number first, then rounded half up. Grade Melon still showed the old letter-chart results. Courses with a Maryland end-of-course exam use 40/40/20.
