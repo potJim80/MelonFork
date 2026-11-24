@@ -222,15 +222,20 @@ export async function syncAll(client, courses, onStep = () => {}) {
   const real = periods.filter((p) => !/progress|interim|mid/i.test(p.name));
   const mpPeriods = real.map((p, i) => ({ ...p, key: mpKeyFor(p.name, i) })).filter((p) => p.key);
   const today = new Date();
+  // Keep StudentVUE's own pages (current one, often an interim, plus each marking period)
+  // so differences between them can be checked.
+  const raw = { [current || 'current']: first.courses };
   for (const p of mpPeriods) {
     const start = new Date(p.start);
     if (Number.isFinite(start.getTime()) && start > today) continue; // future period: nothing yet
     onStep(`Reading ${p.name}…`);
     const gb = p.name === current ? first : await client.gradebook(p.index);
+    raw[p.name] = gb.courses;
     mergeGradebook(courses, gb, p.key);
   }
   if (!mpPeriods.length) mergeGradebook(courses, first, 'MP1');
-  const extra = { periods: mpPeriods.map(({ key, name, start, end }) => ({ key, name, start, end })), current };
+  const extra = { periods: mpPeriods.map(({ key, name, start, end }) => ({ key, name, start, end })), current,
+    allPeriods: periods.map(({ index, name, start, end }) => ({ index, name, start, end })), raw };
   try { onStep('Reading schedule…'); extra.schedule = scheduleRows(await client.schedule()); } catch (e) { extra.scheduleError = e.message; }
   try { onStep('Reading attendance…'); extra.attendance = attendanceSummary(await client.attendance()); } catch (e) { extra.attendanceError = e.message; }
   try {
